@@ -2,9 +2,10 @@
 
 int main()
 {
-    RobinHoodHashTable<int> r;
+    RobinHoodHashtable<int> r;
 
-    r.insert(1);
+    for (int i = 0; i < 1000; i++)
+        r.insert(i);
 
     return 0;
 }
