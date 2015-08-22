@@ -112,26 +112,26 @@ template <typename T,                               // type of the contained val
 
         do
         {
-            std::size_t offset = _hasher(t) % _capacity;
+            const std::size_t hash = _hasher(t);
     
-            while (dib < _buckets[(offset + dib) % _capacity]._dib)
+            while (dib < _buckets[(hash + dib) % _capacity]._dib)
             {
                 dib++;
             }
 
-            Bucket<T>* other = &_buckets[0] + ((offset + dib) % _capacity);
+            Bucket<T>* head = &_buckets[(hash + dib) % _capacity];
 
-            if (dib == other->_dib && t == other->_value)
+            if (dib == head->_dib && t == head->_value)
             {
                 break;
             }
             else
             {
-                const T tTmp = other->_value;
-                const uint8_t dibTmp = other->_dib + 1;
+                const T tTmp = head->_value;
+                const uint8_t dibTmp = head->_dib + 1;
        
-                other->_value = t;
-                other->_dib = dib;
+                head->_value = t;
+                head->_dib = dib;
           
                 t = tTmp;
                 dib = dibTmp;
@@ -139,6 +139,33 @@ template <typename T,                               // type of the contained val
             
         } while (dib >= Bucket<T>::FILLED);
 
+    }
+
+    void erase(const value_type& t)
+    {
+        uint8_t dib = Bucket<T>::FILLED;
+        const std::size_t hash = _hasher(t);
+
+        Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
+
+        while (dib < prec->_dib || (dib == prec->_dib && t != prec->_value))
+        {
+            dib++;
+            prec = &_buckets[(hash + dib) % _capacity]; 
+        }
+
+        if (t == prec->_value)
+        {
+            while (prec->_dib > Bucket<T>::FILLED)
+            {
+                Bucket<T>* const succ = prec + ((prec - &_buckets[0] + 1) % _capacity);
+                prec->_dib = succ->_dib - 1;
+                prec->_value = succ->_value;
+                prec = succ;
+            }
+            ((prec == &_buckets[0]) ? &_buckets[_capacity - 1]
+                                     : --prec                 )->_dib = Bucket<T>::EMPTY;
+        }
     }
 
     std::size_t size() { return _size; }
