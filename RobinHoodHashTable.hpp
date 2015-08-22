@@ -79,12 +79,12 @@ template <typename T,                               // type of the contained val
         const std::size_t oldCapacity = _capacity;
 
         _buckets.resize(_capacity *= EXP_GROWTH);
-        _size = 0;
+        _size = 1;
 
         //Each non-empty bucket is marked empty before its value is rehashed
         for (auto& b : _buckets)
         {
-            if (b.isFilled())
+            if (b.isRehash())
             {
                 this->insert(b._value); 
             }
@@ -145,6 +145,7 @@ template <typename T,                               // type of the contained val
     {
         uint8_t dib = Bucket<T>::FILLED;
         const std::size_t hash = _hasher(t);
+        Bucket<T>* const base = &_buckets[0];
 
         Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
 
@@ -154,19 +155,91 @@ template <typename T,                               // type of the contained val
             prec = &_buckets[(hash + dib) % _capacity]; 
         }
 
-        if (t == prec->_value)
+        if (dib == prec->_dib && t == prec->_value)
         {
-            while (prec->_dib > Bucket<T>::FILLED)
+            Bucket<T>* succ = base + ((prec - base + 1) % _capacity);
+
+            while (succ->_dib > Bucket<T>::FILLED)
             {
-                Bucket<T>* const succ = prec + ((prec - &_buckets[0] + 1) % _capacity);
                 prec->_dib = succ->_dib - 1;
                 prec->_value = succ->_value;
                 prec = succ;
+                succ = &_buckets[0] + ((prec - base + 1) % _capacity);
             }
-            ((prec == &_buckets[0]) ? &_buckets[_capacity - 1]
-                                     : --prec                 )->_dib = Bucket<T>::EMPTY;
+
+            prec->markEmpty();
+            _size--;
         }
     }
+
+    template <typename U, typename V>
+    struct Iterator
+    {
+        Iterator(const U bucketPtr, const Bucket<T>* end) : _bucketPtr(bucketPtr),
+                                                            _end(end) {}
+
+        Iterator(const Iterator<U, V>& it) : _bucketPtr(it._bucketPtr),
+                                             _end(it._end) {}
+
+        V& operator* () const
+        {
+            return _bucketPtr->_value;
+        }
+
+        Iterator<U, V>& operator++()
+        {
+            do
+            {
+                _bucketPtr++;
+            } while (_bucketPtr != _end && !_bucketPtr->isFilled());
+            return *this;
+        }
+
+        Iterator<U, V>& operator++(int)
+        {
+            iterator tmp(*this);
+            operator++();
+            return tmp;
+        }
+
+        bool operator==(const Iterator<U, V>& rhs) const
+        {
+            return this->_bucketPtr == rhs->_bucketPtr;
+        }
+
+        bool operator!=(const Iterator<U, V>& rhs) const
+        {
+            return this->_bucketPtr != rhs._bucketPtr;
+        }
+
+        U _bucketPtr;
+        const Bucket<T>* _end;
+    };
+
+    typedef Iterator<      Bucket<T>*,       T>       iterator;
+    typedef Iterator<const Bucket<T>*, const T> const_iterator;
+
+    template <typename I>
+    I ubegin() const
+    {
+        const Bucket<T>* base = &_buckets[0];
+
+        return ((base->isFilled()) ?    I(base, base + _capacity)
+                                   : ++(I(base, base + _capacity)));
+    }
+
+    template <typename I>
+    I uend() const
+    {
+        const Bucket<T>* end = &_buckets[0] + _capacity;
+        return I(end, end);
+    }
+
+          iterator  begin() const { return ubegin<      iterator>(); }
+    const_iterator cbegin() const { return ubegin<const_iterator>(); }
+
+          iterator  end() const { return uend<      iterator>(); }
+    const_iterator cend() const { return uend<const_iterator>(); }
 
     std::size_t size() { return _size; }
 
