@@ -1,4 +1,4 @@
-#include "RobinHoodHashTable.hpp"
+#include "RobinHoodHashtable.hpp"
 #include <iostream>
 
 int main()
