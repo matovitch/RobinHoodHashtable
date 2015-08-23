@@ -1,6 +1,7 @@
 #include "RobinHoodHashtable.hpp"
 #include <iostream>
 
+/*
 int main()
 {
     typedef RobinHoodHashtable<int> Table;
@@ -26,6 +27,76 @@ int main()
     std::cout << "size : " << r.size() << std::endl;
 
     std::cout << (r.cfind(35) != r.cend()) << std::endl;
+
+    return 0u;
+}*/
+#include <cstddef>
+#include <ctime>
+#include <unordered_set>
+#include <random>
+
+struct A
+{
+    A() {}
+
+    A(uint64_t value) : _value(value) {}
+
+    uint64_t _value;
+
+   bool operator==(const A& rhs) const { return rhs._value == _value; }
+
+   bool operator!=(const A& rhs) const { return rhs._value != _value; }
+};
+
+struct H
+{
+
+    std::size_t operator() (const A& a) const
+    {
+        std::hash<uint64_t> h;
+        
+        return h(a._value);
+    }
+};
+
+int main()
+{
+
+    typedef A Value;
+    //typedef std::unordered_set<Value, H> Table;
+    typedef RobinHoodHashtable<Value, H> Table;
+
+    std::vector<Value> filler;
+
+    std::random_device rd;
+
+    std::default_random_engine urng(rd());
+
+    std::uniform_int_distribution<uint64_t> distrib;
+
+    constexpr std::size_t size = 1000000;
+
+    for (std::size_t i = 0; i < size; ++i)
+    {
+        filler.push_back(A(distrib(urng)));
+    }
+
+    Table myTable;
+
+
+    //myTable.reserve(1000000);
+
+    std::clock_t begin = std::clock();
+
+    for (const auto& e: filler)
+    {
+        myTable.insert(e);
+    }
+
+    std::clock_t end = std::clock();
+    double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
+
+    std::cout << elapsed_secs << std::endl;
 
     return 0;
 }

@@ -55,7 +55,7 @@ struct RobinHoodHashtable
 
     constexpr static const std::size_t INIT_SIZE   = 8; // number of buckets to start with
     constexpr static const std::size_t EXP_GROWTH  = 1; // exponential growth factor
-    constexpr static const std::size_t LOAD_FACTOR = 3; // load factor as 1 - 1 / 2^n
+    constexpr static const std::size_t LOAD_FACTOR = 2000000; // load factor as 1 - 1 / 2^n
 
     RobinHoodHashtable() : _size(0),
                            _hasher(),
