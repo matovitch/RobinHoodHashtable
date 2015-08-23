@@ -48,14 +48,14 @@ struct Bucket
 template <typename T,                               // type of the contained values
           typename H = std::hash<T>,                // hasher
           typename E = std::equal_to<T>,            // equality comparator
-          typename A = std::allocator<Bucket<T>>>  // allocator
+          typename A = std::allocator<Bucket<T>>>   // allocator
 struct RobinHoodHashtable
 {
     typedef T value_type;
 
-    constexpr static float LOAD_FACTOR           = 0.7; // load factor
-    constexpr static const float EXP_GROWTH      = 2.0; // exponential growth factor
-    constexpr static const std::size_t INIT_SIZE =   8; // number of buckets to start with
+    constexpr static const std::size_t INIT_SIZE   = 8; // number of buckets to start with
+    constexpr static const std::size_t EXP_GROWTH  = 1; // exponential growth factor
+    constexpr static const std::size_t LOAD_FACTOR = 3; // load factor as 1 - 1 / 2^n
 
     RobinHoodHashtable() : _size(0),
                            _hasher(),
@@ -79,7 +79,7 @@ struct RobinHoodHashtable
         //Reserve the new capacity
         const std::size_t oldCapacity = _capacity;
 
-        _buckets.resize(_capacity *= EXP_GROWTH);
+        _buckets.resize(_capacity <<= EXP_GROWTH);
         _size = 1;
 
         //Each non-empty bucket is marked empty before its value is rehashed
@@ -100,7 +100,7 @@ struct RobinHoodHashtable
     void insert(T t)
     {
         //Check if one need a rehash
-        if ((++_size) >= _capacity * LOAD_FACTOR)
+        if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
         {
             rehash();
         }
