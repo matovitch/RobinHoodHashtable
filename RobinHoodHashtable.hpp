@@ -238,10 +238,9 @@ struct RobinHoodHashtable
         Iterator(const Iterator<U, V>& it) : _bucketPtr(it._bucketPtr),
                                              _end(it._end) {}
 
-        V& operator* () const
-        {
-            return _bucketPtr->_value;
-        }
+        V& operator* () const { return _bucketPtr->_value; }
+
+        V* operator-> () const { return &(_bucketPtr->_value); }
 
         Iterator<U, V>& operator++()
         {
