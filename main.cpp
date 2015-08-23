@@ -15,6 +15,8 @@ int main()
 
     std::cout << "size : " << r.size() << std::endl;
 
+    std::cout << (r.cfind(35) != r.cend()) << std::endl;
+
     for (int i = 0; i < 50; i++)
         r.erase(i);
 
@@ -22,6 +24,8 @@ int main()
         std::cout << "plip : " << *it << std::endl;
 
     std::cout << "size : " << r.size() << std::endl;
+
+    std::cout << (r.cfind(35) != r.cend()) << std::endl;
 
     return 0;
 }

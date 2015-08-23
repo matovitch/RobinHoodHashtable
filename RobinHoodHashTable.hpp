@@ -21,6 +21,8 @@ struct Bucket
 {
     typedef T value_type;
 
+    // Note : One use a dib of 0 and 1 for empty and to-rehash buckets.
+    // Inserting t at (hash(t) + 2) % capacity : this is a small optim.
     enum
     {
         EMPTY  = 0,
@@ -39,7 +41,6 @@ struct Bucket
     T       _value;     // the actual value
 };
 
-//typedef int T; //TODO comment
 
 /**
  * RobinHoodHashTable: hashtable using the Robin Hood hashing
@@ -47,8 +48,8 @@ struct Bucket
 template <typename T,                               // type of the contained values
           typename H = std::hash<T>,                // hasher
           typename E = std::equal_to<T>,            // equality comparator
-          typename A = std::allocator<Bucket<T>>    // allocator   
-         > struct RobinHoodHashtable
+          typename A = std::allocator<Bucket<T>>>  // allocator
+struct RobinHoodHashtable
 {
     typedef T value_type;
 
@@ -75,7 +76,7 @@ template <typename T,                               // type of the contained val
             }
         }
 
-        //reserve the new capacity
+        //Reserve the new capacity
         const std::size_t oldCapacity = _capacity;
 
         _buckets.resize(_capacity *= EXP_GROWTH);
@@ -86,7 +87,7 @@ template <typename T,                               // type of the contained val
         {
             if (b.isRehash())
             {
-                this->insert(b._value); 
+                this->insert(b._value);
             }
             //The filled buckets cannot be futher than the old capacity
             if ((&b - &_buckets[0]) > oldCapacity)
@@ -96,10 +97,7 @@ template <typename T,                               // type of the contained val
         }
     }
 
-    /**
-     * Insert an element in the hashtable (!by copy!)
-     */
-    void insert(value_type t)
+    void insert(T t)
     {
         //Check if one need a rehash
         if ((++_size) >= _capacity * LOAD_FACTOR)
@@ -107,13 +105,13 @@ template <typename T,                               // type of the contained val
             rehash();
         }
 
-        //Robin Hood hashing technique
         uint8_t dib = Bucket<T>::FILLED;
 
         do
         {
             const std::size_t hash = _hasher(t);
-    
+
+            //Skip filled buckets with larger dib
             while (dib < _buckets[(hash + dib) % _capacity]._dib)
             {
                 dib++;
@@ -123,25 +121,27 @@ template <typename T,                               // type of the contained val
 
             if (dib == head->_dib && t == head->_value)
             {
+                //the element is present, nothing to do
                 break;
             }
             else
             {
+                //copy the value of the found bucket and insert our own
                 const T tTmp = head->_value;
                 const uint8_t dibTmp = head->_dib + 1;
-       
+
                 head->_value = t;
                 head->_dib = dib;
-          
+
                 t = tTmp;
                 dib = dibTmp;
             }
-            
+            //go on with the displaced bucket if non empty
         } while (dib >= Bucket<T>::FILLED);
 
     }
 
-    void erase(const value_type& t)
+    void erase(const T& t)
     {
         uint8_t dib = Bucket<T>::FILLED;
         const std::size_t hash = _hasher(t);
@@ -149,16 +149,19 @@ template <typename T,                               // type of the contained val
 
         Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
 
+        //Skip buckets with lower dib or different value
         while (dib < prec->_dib || (dib == prec->_dib && t != prec->_value))
         {
             dib++;
-            prec = &_buckets[(hash + dib) % _capacity]; 
+            prec = &_buckets[(hash + dib) % _capacity];
         }
 
+        //if the element is found
         if (dib == prec->_dib && t == prec->_value)
         {
             Bucket<T>* succ = base + ((prec - base + 1) % _capacity);
 
+            //Shift the right-adjacent buckets to the left
             while (succ->_dib > Bucket<T>::FILLED)
             {
                 prec->_dib = succ->_dib - 1;
@@ -167,12 +170,66 @@ template <typename T,                               // type of the contained val
                 succ = &_buckets[0] + ((prec - base + 1) % _capacity);
             }
 
+            //Empty the bucket and decrement the size
             prec->markEmpty();
             _size--;
         }
     }
 
-    template <typename U, typename V>
+    /**
+     * Template function to avoid find/cfind redundancy
+     */
+    template <typename I>
+    I ufind(const T& t) const
+    {
+        uint8_t dib =  Bucket<T>::FILLED;
+        const std::size_t hash = _hasher(t);
+        const Bucket<T>* base = &_buckets[0];
+
+        const Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
+
+        //Skip buckets with lower dib or different value
+        while (dib < prec->_dib || (dib == prec->_dib && t != prec->_value))
+        {
+            dib++;
+            prec = &_buckets[(hash + dib) % _capacity];
+        }
+
+        //if the element is found
+        if (dib == prec->_dib && t == prec->_value)
+        {
+            return I(prec, base + _capacity);
+        }
+        else
+        {
+            return uend<I>();
+        }
+    }
+
+    /**
+     * Same thing, utility for begin/cbegin
+     */
+    template <typename I>
+    I ubegin() const
+    {
+        const Bucket<T>* base = &_buckets[0];
+
+        return ((base->isFilled()) ?    I(base, base + _capacity)
+                                   : ++(I(base, base + _capacity)));
+    }
+
+    /**
+     * Same thing, utility for end/cend
+     */
+    template <typename I>
+    I uend() const
+    {
+        const Bucket<T>* end = &_buckets[0] + _capacity;
+        return I(end, end);
+    }
+
+    template <typename U, // U buckets pointer type const/non-const
+              typename V> // V value type const/non-const
     struct Iterator
     {
         Iterator(const U bucketPtr, const Bucket<T>* end) : _bucketPtr(bucketPtr),
@@ -192,6 +249,7 @@ template <typename T,                               // type of the contained val
             {
                 _bucketPtr++;
             } while (_bucketPtr != _end && !_bucketPtr->isFilled());
+            //we skipped the empty buckets ! Hoora !
             return *this;
         }
 
@@ -212,28 +270,16 @@ template <typename T,                               // type of the contained val
             return this->_bucketPtr != rhs._bucketPtr;
         }
 
-        U _bucketPtr;
-        const Bucket<T>* _end;
+        U _bucketPtr;           //Bucket pointer by the iterator
+        const Bucket<T>* _end;  //End iterator pointer
     };
 
+    //The classic iterator typedefs
     typedef Iterator<      Bucket<T>*,       T>       iterator;
     typedef Iterator<const Bucket<T>*, const T> const_iterator;
 
-    template <typename I>
-    I ubegin() const
-    {
-        const Bucket<T>* base = &_buckets[0];
-
-        return ((base->isFilled()) ?    I(base, base + _capacity)
-                                   : ++(I(base, base + _capacity)));
-    }
-
-    template <typename I>
-    I uend() const
-    {
-        const Bucket<T>* end = &_buckets[0] + _capacity;
-        return I(end, end);
-    }
+          iterator  find(const T& t) const { return ufind<      iterator>(t); }
+    const_iterator cfind(const T& t) const { return ufind<const_iterator>(t); }
 
           iterator  begin() const { return ubegin<      iterator>(); }
     const_iterator cbegin() const { return ubegin<const_iterator>(); }
@@ -243,10 +289,10 @@ template <typename T,                               // type of the contained val
 
     std::size_t size() { return _size; }
 
-    std::vector<Bucket<T>>  _buckets;
-    std::size_t             _capacity;
-    std::size_t             _size;
-    const H                 _hasher;
+    std::vector<Bucket<T>>  _buckets;   // vector of buckets
+    std::size_t             _capacity;  // reserved bucket/memory
+    std::size_t             _size;      // number of inserted elements
+    const H                 _hasher;    // for hash computations
 };
 
 
