@@ -65,8 +65,8 @@ int main()
 {
 
     typedef uint64_t Value;
-    //typedef boost::unordered_set<Value, H> Table;
-    typedef RobinHoodHashtable<Value, H> Table;
+    typedef std::unordered_set<Value, H> Table;
+    //typedef RobinHoodHashtable<Value, H> Table;
 
     std::vector<Value> filler;
 
