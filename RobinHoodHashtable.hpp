@@ -4,7 +4,6 @@
 #include <algorithm>
 #include <functional>
 #include <cstddef>
-#include <iostream>
 #include <memory>
 
 /**
@@ -26,18 +25,15 @@ struct Bucket
     enum
     {
         EMPTY  = 0,
-        REHASH = 1,
-        FILLED = 2
+        FILLED = 1
     };
 
     Bucket() : _dib(EMPTY) {}
 
     void markEmpty () { _dib = EMPTY ; }
-    void markRehash() { _dib = REHASH; }
 
     bool isEmpty () const { return _dib == EMPTY ; }
-    bool isRehash() const { return _dib == REHASH; }
-    bool isFilled() const { return _dib >= FILLED; }
+    bool isFilled() const { return _dib != EMPTY; }
 
     uint8_t _dib;   // Distance to Initial Bucket
     T       _value; // the actual value
@@ -82,36 +78,24 @@ struct RobinHoodHashtable
         std::size_t oldCapacity = _capacity;
         Bucket<T>* added = _allocator.allocate(_capacity <<= 1, _buckets + _capacity);
 
-        std::uninitialized_copy(_buckets, _buckets + oldCapacity, added);
-
-        //Mark the already contained elements as rehashable
-        for (std::size_t i = 0; i < oldCapacity; i++)
-        {
-            if (added[i].isFilled())
-            {
-                added[i].markRehash();
-            }
-        }
-
-        for (std::size_t i = oldCapacity; i < _capacity; i++)
+        for (std::size_t i = 0; i < _capacity; i++)
         {
             _allocator.construct(added + i);
         }
 
-        _allocator.deallocate(_buckets, oldCapacity);
-        _buckets = added;
+        std::swap(added, _buckets);
 
         _size = 1;
 
-        //Each non-empty bucket is marked empty before its value is rehashed
         for (std::size_t i = 0; i < oldCapacity; i++)
         {
-            if (_buckets[i].isRehash())
+            if (added[i].isFilled())
             {
-                _buckets[i].markEmpty();
-                this->insert(_buckets[i]._value);
+                this->insert(added[i]._value);
             }
         }
+
+        _allocator.deallocate(added, oldCapacity);
     }
 
     void insert(T t)
@@ -147,7 +131,6 @@ struct RobinHoodHashtable
             }
             else
             {
-                if (head->isRehash()) _size++;
                 //copy the value of the found bucket and insert our own
                 const T tTmp = head->_value;
                 const uint8_t dibTmp = head->_dib + 1;
