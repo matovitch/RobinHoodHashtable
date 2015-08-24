@@ -29,8 +29,8 @@ int main()
     std::cout << (r.cfind(35) != r.cend()) << std::endl;
 
     return 0u;
-}
-*/
+}*/
+
 #include <cstddef>
 #include <ctime>
 #include <unordered_set>
@@ -76,7 +76,7 @@ int main()
 
     std::uniform_int_distribution<uint64_t> distrib;
 
-    constexpr std::size_t size = 10000000;
+    constexpr std::size_t size = 100000000;
 
     for (std::size_t i = 0; i < size; ++i)
     {

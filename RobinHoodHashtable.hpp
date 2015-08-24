@@ -5,10 +5,7 @@
 #include <functional>
 #include <cstddef>
 #include <iostream>
-#include <algorithm>
 #include <memory>
-#include <stack>
-
 
 /**
  * This is an implementation of a Robin-Hood hashing based hashtable, you can find more info there :
@@ -32,6 +29,8 @@ struct Bucket
         REHASH = 1,
         FILLED = 2
     };
+
+    Bucket() : _dib(EMPTY) {}
 
     void markEmpty () { _dib = EMPTY ; }
     void markRehash() { _dib = REHASH; }
@@ -57,23 +56,20 @@ struct RobinHoodHashtable
     typedef T value_type;
 
     constexpr static const std::size_t INIT_SIZE   = 4096; // number of buckets to start with
-    constexpr static const std::size_t LOAD_FACTOR =    3; // load factor as 1 - 1 / 2^n
+    constexpr static const std::size_t LOAD_FACTOR =    2; // load factor as 1 - 1 / 2^n
 
     RobinHoodHashtable() : _buckets(),
                            _capacity(INIT_SIZE),
                            _size(0),
                            _hasher(),
                            _equalTo(),
-                           _allocator(),
-                           _allocs()                       
+                           _allocator()                      
     {
         _buckets = _allocator.allocate(INIT_SIZE);
-        _allocs.push(Alloc(_buckets, INIT_SIZE));
 
         for (std::size_t i = 0; i < INIT_SIZE; i++)
         {
             _allocator.construct(_buckets + i);
-            _buckets[i].markEmpty();
         }
     }
 
@@ -84,28 +80,26 @@ struct RobinHoodHashtable
     {
         
         std::size_t oldCapacity = _capacity;
-        Bucket<T>* added = _allocator.allocate(_capacity << 1, _buckets + _capacity);
+        Bucket<T>* added = _allocator.allocate(_capacity <<= 1, _buckets + _capacity);
 
-        std::uninitialized_copy(_buckets, _buckets + _capacity, added);
-        _buckets = added;
-
-        _allocs.push(Alloc(added, _capacity << 1));
-        _capacity = _capacity << 1;
+        std::uninitialized_copy(_buckets, _buckets + oldCapacity, added);
 
         //Mark the already contained elements as rehashable
         for (std::size_t i = 0; i < oldCapacity; i++)
         {
-            if (_buckets[i].isFilled())
+            if (added[i].isFilled())
             {
-                _buckets[i].markRehash();
+                added[i].markRehash();
             }
         }
 
         for (std::size_t i = oldCapacity; i < _capacity; i++)
         {
-            _allocator.construct(_buckets + i);
-            _buckets[i].markEmpty();
+            _allocator.construct(added + i);
         }
+
+        _allocator.deallocate(_buckets, oldCapacity);
+        _buckets = added;
 
         _size = 1;
 
@@ -314,23 +308,9 @@ struct RobinHoodHashtable
 
     std::size_t size() { return _size; }
 
-    struct Alloc
-    {
-        Alloc(Bucket<T>* ptr, std::size_t size) : _ptr(ptr),
-                                                  _size(size) {}
-
-        Bucket<T>*  _ptr;
-        std::size_t _size;
-    };
-
     ~RobinHoodHashtable()
     {
-        while (!(_allocs.empty()))
-        {
-            _allocator.deallocate(_allocs.top()._ptr, 
-                                  _allocs.top()._size);
-            _allocs.pop();
-        }
+        _allocator.deallocate(_buckets,_capacity);
     }
 
     Bucket<T>*        _buckets;   // buckets...
@@ -339,7 +319,6 @@ struct RobinHoodHashtable
     H                 _hasher;    // hasher...
     E                 _equalTo;   // equality...
     A                 _allocator; // allocator...
-    std::stack<Alloc> _allocs;    // past allocations 
 };
 
 
