@@ -29,10 +29,12 @@ int main()
     std::cout << (r.cfind(35) != r.cend()) << std::endl;
 
     return 0u;
-}*/
+}
+*/
 #include <cstddef>
 #include <ctime>
 #include <unordered_set>
+#include <boost/unordered/unordered_set.hpp>
 #include <random>
 
 struct A
@@ -62,8 +64,8 @@ struct H
 int main()
 {
 
-    typedef A Value;
-    //typedef std::unordered_set<Value, H> Table;
+    typedef uint64_t Value;
+    //typedef boost::unordered_set<Value, H> Table;
     typedef RobinHoodHashtable<Value, H> Table;
 
     std::vector<Value> filler;
@@ -74,17 +76,19 @@ int main()
 
     std::uniform_int_distribution<uint64_t> distrib;
 
-    constexpr std::size_t size = 1000000;
+    constexpr std::size_t size = 10000000;
 
     for (std::size_t i = 0; i < size; ++i)
     {
-        filler.push_back(A(distrib(urng)));
+        filler.push_back(distrib(urng));
     }
 
     Table myTable;
 
 
-    //myTable.reserve(1000000);
+    //myTable.reserve(10000000);
+
+    
 
     std::clock_t begin = std::clock();
 

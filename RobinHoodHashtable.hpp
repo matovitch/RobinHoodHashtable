@@ -4,7 +4,10 @@
 #include <algorithm>
 #include <functional>
 #include <cstddef>
-#include <vector>
+#include <iostream>
+#include <algorithm>
+#include <memory>
+#include <stack>
 
 
 /**
@@ -37,8 +40,8 @@ struct Bucket
     bool isRehash() const { return _dib == REHASH; }
     bool isFilled() const { return _dib >= FILLED; }
 
-    uint8_t _dib = 0;   // Distance to Initial Bucket
-    T       _value;     // the actual value
+    uint8_t _dib;   // Distance to Initial Bucket
+    T       _value; // the actual value
 };
 
 
@@ -53,46 +56,66 @@ struct RobinHoodHashtable
 {
     typedef T value_type;
 
-    constexpr static const std::size_t INIT_SIZE   = 8; // number of buckets to start with
-    constexpr static const std::size_t EXP_GROWTH  = 1; // exponential growth factor
-    constexpr static const std::size_t LOAD_FACTOR = 2000000; // load factor as 1 - 1 / 2^n
+    constexpr static const std::size_t INIT_SIZE   = 4096; // number of buckets to start with
+    constexpr static const std::size_t LOAD_FACTOR =    3; // load factor as 1 - 1 / 2^n
 
-    RobinHoodHashtable() : _size(0),
+    RobinHoodHashtable() : _buckets(),
+                           _capacity(INIT_SIZE),
+                           _size(0),
                            _hasher(),
-                           _buckets(INIT_SIZE),
-                           _capacity(INIT_SIZE) {}
+                           _equalTo(),
+                           _allocator(),
+                           _allocs()                       
+    {
+        _buckets = _allocator.allocate(INIT_SIZE);
+        _allocs.push(Alloc(_buckets, INIT_SIZE));
+
+        for (std::size_t i = 0; i < INIT_SIZE; i++)
+        {
+            _allocator.construct(_buckets + i);
+            _buckets[i].markEmpty();
+        }
+    }
 
     /**
      * Reserve more memory and rehash the table accordingly
      */
     void rehash()
     {
+        
+        std::size_t oldCapacity = _capacity;
+        Bucket<T>* added = _allocator.allocate(_capacity << 1, _buckets + _capacity);
+
+        std::uninitialized_copy(_buckets, _buckets + _capacity, added);
+        _buckets = added;
+
+        _allocs.push(Alloc(added, _capacity << 1));
+        _capacity = _capacity << 1;
+
         //Mark the already contained elements as rehashable
-        for (auto& b : _buckets)
+        for (std::size_t i = 0; i < oldCapacity; i++)
         {
-            if (b.isFilled())
+            if (_buckets[i].isFilled())
             {
-                b.markRehash();
+                _buckets[i].markRehash();
             }
         }
 
-        //Reserve the new capacity
-        const std::size_t oldCapacity = _capacity;
+        for (std::size_t i = oldCapacity; i < _capacity; i++)
+        {
+            _allocator.construct(_buckets + i);
+            _buckets[i].markEmpty();
+        }
 
-        _buckets.resize(_capacity <<= EXP_GROWTH);
         _size = 1;
 
         //Each non-empty bucket is marked empty before its value is rehashed
-        for (auto& b : _buckets)
+        for (std::size_t i = 0; i < oldCapacity; i++)
         {
-            if (b.isRehash())
+            if (_buckets[i].isRehash())
             {
-                this->insert(b._value);
-            }
-            //The filled buckets cannot be futher than the old capacity
-            if ((&b - &_buckets[0]) > oldCapacity)
-            {
-                break;
+                _buckets[i].markEmpty();
+                this->insert(_buckets[i]._value);
             }
         }
     }
@@ -107,8 +130,8 @@ struct RobinHoodHashtable
 
         uint8_t dib = Bucket<T>::FILLED;
 
-        do
-        {
+        loop:
+
             const std::size_t hash = _hasher(t);
 
             //Skip filled buckets with larger dib
@@ -119,13 +142,18 @@ struct RobinHoodHashtable
 
             Bucket<T>* head = &_buckets[(hash + dib) % _capacity];
 
-            if (dib == head->_dib && t == head->_value)
+            if (dib == head->_dib && _equalTo(t, head->_value))
             {
-                //the element is present, nothing to do
-                break;
+                _size--;
+            }
+            else if (head->isEmpty())
+            {
+                head->_value = t;
+                head->_dib = dib;
             }
             else
             {
+                if (head->isRehash()) _size++;
                 //copy the value of the found bucket and insert our own
                 const T tTmp = head->_value;
                 const uint8_t dibTmp = head->_dib + 1;
@@ -135,10 +163,8 @@ struct RobinHoodHashtable
 
                 t = tTmp;
                 dib = dibTmp;
+                goto loop;
             }
-            //go on with the displaced bucket if non empty
-        } while (dib >= Bucket<T>::FILLED);
-
     }
 
     void erase(const T& t)
@@ -150,14 +176,14 @@ struct RobinHoodHashtable
         Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
-        while (dib < prec->_dib || (dib == prec->_dib && t != prec->_value))
+        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
         {
             dib++;
             prec = &_buckets[(hash + dib) % _capacity];
         }
 
         //if the element is found
-        if (dib == prec->_dib && t == prec->_value)
+        if (dib == prec->_dib && _equalTo(t, prec->_value))
         {
             Bucket<T>* succ = base + ((prec - base + 1) % _capacity);
 
@@ -189,14 +215,14 @@ struct RobinHoodHashtable
         const Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
-        while (dib < prec->_dib || (dib == prec->_dib && t != prec->_value))
+        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
         {
             dib++;
             prec = &_buckets[(hash + dib) % _capacity];
         }
 
         //if the element is found
-        if (dib == prec->_dib && t == prec->_value)
+        if (dib == prec->_dib && _equalTo(t, prec->_value))
         {
             return I(prec, base + _capacity);
         }
@@ -288,10 +314,32 @@ struct RobinHoodHashtable
 
     std::size_t size() { return _size; }
 
-    std::vector<Bucket<T>>  _buckets;   // vector of buckets
-    std::size_t             _capacity;  // reserved bucket/memory
-    std::size_t             _size;      // number of inserted elements
-    const H                 _hasher;    // for hash computations
+    struct Alloc
+    {
+        Alloc(Bucket<T>* ptr, std::size_t size) : _ptr(ptr),
+                                                  _size(size) {}
+
+        Bucket<T>*  _ptr;
+        std::size_t _size;
+    };
+
+    ~RobinHoodHashtable()
+    {
+        while (!(_allocs.empty()))
+        {
+            _allocator.deallocate(_allocs.top()._ptr, 
+                                  _allocs.top()._size);
+            _allocs.pop();
+        }
+    }
+
+    Bucket<T>*        _buckets;   // buckets...
+    std::size_t       _capacity;  // number of buckets
+    std::size_t       _size;      // number of elements
+    H                 _hasher;    // hasher...
+    E                 _equalTo;   // equality...
+    A                 _allocator; // allocator...
+    std::stack<Alloc> _allocs;    // past allocations 
 };
 
 
