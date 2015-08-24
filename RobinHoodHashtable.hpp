@@ -160,7 +160,7 @@ struct RobinHoodHashtable
         }
 
         //if the element is found
-        if (dib == prec->_dib && _equalTo(t, prec->_value))
+        if (dib == prec->_dib)
         {
             Bucket<T>* succ = base + ((prec - base + 1) % _capacity);
 

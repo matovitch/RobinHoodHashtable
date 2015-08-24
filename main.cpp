@@ -1,7 +1,7 @@
 #include "RobinHoodHashtable.hpp"
 #include <iostream>
 
-/*
+
 int main()
 {
     typedef RobinHoodHashtable<int> Table;
@@ -29,8 +29,8 @@ int main()
     std::cout << (r.cfind(35) != r.cend()) << std::endl;
 
     return 0u;
-}*/
-
+}
+/*
 #include <cstddef>
 #include <ctime>
 #include <unordered_set>
@@ -65,8 +65,8 @@ int main()
 {
 
     typedef uint64_t Value;
-    typedef std::unordered_set<Value, H> Table;
-    //typedef RobinHoodHashtable<Value, H> Table;
+    //typedef std::unordered_set<Value, H> Table;
+    typedef RobinHoodHashtable<Value, H> Table;
 
     std::vector<Value> filler;
 
@@ -76,7 +76,7 @@ int main()
 
     std::uniform_int_distribution<uint64_t> distrib;
 
-    constexpr std::size_t size = 100000000;
+    constexpr std::size_t size = 10000000;
 
     for (std::size_t i = 0; i < size; ++i)
     {
@@ -88,13 +88,17 @@ int main()
 
     //myTable.reserve(10000000);
 
+    for (const auto& e: filler)
+    {
+        myTable.insert(e);
+    }
     
-
     std::clock_t begin = std::clock();
 
     for (const auto& e: filler)
     {
-        myTable.insert(e);
+        myTable.erase(e);
+        //myTable.insert(e);
     }
 
     std::clock_t end = std::clock();
@@ -103,4 +107,4 @@ int main()
     std::cout << elapsed_secs << std::endl;
 
     return 0;
-}
+}*/
