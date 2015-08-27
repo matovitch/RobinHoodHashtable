@@ -129,7 +129,7 @@ struct RobinHoodHashtable
         std::size_t oldCapacity = _capacity;
         realloc(_buckets, (_capacity <<= 1) * sizeof(Bucket<T>));
 
-        for (std::size_t i = 0; i < _capacity; i++)
+        for (std::size_t i = 0; i < oldCapacity; i++)
         {
             if (_buckets[i].isFilled())
             {
@@ -137,27 +137,17 @@ struct RobinHoodHashtable
             } 
         }
 
-        for (std::size_t i = 0; i < _capacity; i++)
-        {
-            _allocator.construct(added + i);
-        }
-
-        std::swap(added, _buckets);
-
         _size = 1;
 
         for (std::size_t i = 0; i < oldCapacity; i++)
         {
-            if (added[i].isFilled())
+            if (_buckets[i].isRehash())
             {
-                this->insert(added[i]._value);
+                _buckets[i].markEmpty();
+                this->insert(_buckets[i]._value);
             }
         }
-
-        _allocator.deallocate(added, oldCapacity);
     }
-
-
 
     void insert(T t)
     {
