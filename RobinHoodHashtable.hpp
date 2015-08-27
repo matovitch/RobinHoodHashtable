@@ -1,6 +1,7 @@
 #ifndef __ROBIN_HOOD_HASH_TABLE_H__
 #define __ROBIN_HOOD_HASH_TABLE_H__
 
+#include <type_traits>
 #include <algorithm>
 #include <functional>
 #include <cstddef>
@@ -25,15 +26,18 @@ struct Bucket
     enum
     {
         EMPTY  = 0,
-        FILLED = 1
+        REHASH = 1,
+        FILLED = 2
     };
 
     Bucket() : _dib(EMPTY) {}
 
     void markEmpty () { _dib = EMPTY ; }
+    void markRehash() { _dib = REHASH; }
 
     bool isEmpty () const { return _dib == EMPTY ; }
-    bool isFilled() const { return _dib != EMPTY; }
+    bool isRehash() const { return _dib == REHASH; }
+    bool isFilled() const { return _dib >= FILLED; }
 
     uint8_t _dib;   // Distance to Initial Bucket
     T       _value; // the actual value
@@ -61,6 +65,15 @@ struct RobinHoodHashtable
                            _equalTo(),
                            _allocator()                      
     {
+        init<std::is_trivially_copyable<T>::value>();
+    }
+
+    template <bool>
+    void init();
+
+    template <>
+    void init<false>()
+    {
         _buckets = _allocator.allocate(INIT_SIZE);
 
         for (std::size_t i = 0; i < INIT_SIZE; i++)
@@ -69,10 +82,20 @@ struct RobinHoodHashtable
         }
     }
 
+    template <>
+    void init<true>()
+    {
+        _buckets = static_cast<Bucket<T>*>(malloc(INIT_SIZE * sizeof(Bucket<T>)));
+    }
+
+    template <bool>
+    void rehash();
+
     /**
      * Reserve more memory and rehash the table accordingly
      */
-    void rehash()
+    template <>
+    void rehash<false>()
     {
         
         std::size_t oldCapacity = _capacity;
@@ -98,12 +121,59 @@ struct RobinHoodHashtable
         _allocator.deallocate(added, oldCapacity);
     }
 
+    template <>
+    void rehash<true>()
+    {
+        
+        std::size_t oldBuckets = _buckets;
+        std::size_t oldCapacity = _capacity;
+        realloc(_buckets, (_capacity <<= 1) * sizeof(Bucket<T>));
+
+        for (std::size_t i = 0; i < _capacity; i++)
+        {
+            if (_buckets[i].isFilled())
+            {
+                _buckets[i].markRehash();
+            } 
+        }
+
+        for (std::size_t i = 0; i < _capacity; i++)
+        {
+            _allocator.construct(added + i);
+        }
+
+        std::swap(added, _buckets);
+
+        _size = 1;
+
+        for (std::size_t i = 0; i < oldCapacity; i++)
+        {
+            if (added[i].isFilled())
+            {
+                this->insert(added[i]._value);
+            }
+        }
+
+        _allocator.deallocate(added, oldCapacity);
+    }
+
+
+
     void insert(T t)
+    {
+        insertImpl<std::is_trivially_copyable<T>::value>(t);
+    }
+
+    template <bool>
+    void insertImpl(T t);
+
+    template <>
+    void insertImpl<false>(T t)
     {
         //Check if one need a rehash
         if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
         {
-            rehash();
+            rehash<false>();
         }
 
         uint8_t dib = Bucket<T>::FILLED;
@@ -143,6 +213,62 @@ struct RobinHoodHashtable
                 goto loop;
             }
     }
+
+    template <>
+    void insertImpl<true>(T t)
+    {
+        //Check if one need a rehash
+        if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
+        {
+            rehash<false>();
+        }
+
+        uint8_t dib = Bucket<T>::FILLED;
+
+        loop:
+
+            const std::size_t hash = _hasher(t);
+
+            //Skip filled buckets with larger dib
+            while (dib < _buckets[(hash + dib) % _capacity]._dib)
+            {
+                dib++;
+            }
+
+            Bucket<T>* head = &_buckets[(hash + dib) % _capacity];
+
+            if (dib == head->_dib && _equalTo(t, head->_value))
+            {
+                _size--;
+            }
+            else if (head->isRehash())
+            {
+                const T tTmp = head->_value;
+                
+                head->_value = t;
+                head->_dib = dib;
+
+                insert(tTmp);
+            }
+            else if (head->isEmpty())
+            {
+                head->_value = t;
+                head->_dib = dib;
+            }
+            else
+            {
+                //copy the value of the found bucket and insert our own
+                const T tTmp = head->_value;
+                const uint8_t dibTmp = head->_dib + 1;
+
+                head->_value = t;
+                head->_dib = dib;
+
+                t = tTmp;
+                dib = dibTmp;
+                goto loop;
+            }
+    } 
 
     void erase(const T& t)
     {
@@ -293,7 +419,22 @@ struct RobinHoodHashtable
 
     ~RobinHoodHashtable()
     {
-        _allocator.deallocate(_buckets,_capacity);
+        destroy<std::is_trivially_copyable<T>::value>();
+    }
+
+    template <bool>
+    void destroy();
+
+    template <>
+    void destroy<false>
+    {
+        _allocator.deallocate(_buckets, _capacity);
+    }
+
+    template <>
+    void destroy<true>
+    {
+        free(_buckets);
     }
 
     Bucket<T>*        _buckets;   // buckets...
