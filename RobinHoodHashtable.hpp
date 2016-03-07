@@ -280,13 +280,13 @@ struct RobinHoodHashtable
     typedef Iterator<      Bucket<T>*,       T>       iterator;
     typedef Iterator<const Bucket<T>*, const T> const_iterator;
 
-          iterator  find(const T& t) const { return ufind<      iterator>(t); }
+          iterator  find(const T& t)       { return ufind<      iterator>(t); }
     const_iterator cfind(const T& t) const { return ufind<const_iterator>(t); }
 
-          iterator  begin() const { return ubegin<      iterator>(); }
+          iterator  begin()       { return ubegin<      iterator>(); }
     const_iterator cbegin() const { return ubegin<const_iterator>(); }
 
-          iterator  end() const { return uend<      iterator>(); }
+          iterator  end()       { return uend<      iterator>(); }
     const_iterator cend() const { return uend<const_iterator>(); }
 
     std::size_t size() { return _size; }
