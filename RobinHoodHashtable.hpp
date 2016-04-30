@@ -106,7 +106,7 @@ public:
         T tCopy(t);
 
         loop:
-
+        {
             Bucket<T>* head = &_buckets[(_hasher(tCopy) + dib) % _capacity];
 
             //Skip filled buckets with larger dib
@@ -143,17 +143,17 @@ public:
                     goto loop;
                 }
             }
+        }
     }
 
     void insert(T&& t)
     {
-
         uint8_t dib = Bucket<T>::FILLED;
 
         T tCopy = std::move(t);
 
         loop:
-
+        {
             Bucket<T>* head = &_buckets[(_hasher(tCopy) + dib) % _capacity];
 
             //Skip filled buckets with larger dib
@@ -190,6 +190,7 @@ public:
                     goto loop;
                 }
             }
+        }
     }
 
     void erase(const T& t)
