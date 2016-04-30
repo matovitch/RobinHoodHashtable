@@ -6,6 +6,8 @@
 #include <cstddef>
 #include <memory>
 
+#include <iostream>
+
 /**
  * This is an implementation of a Robin-Hood hashing based hashtable, you can find more info there :
  * http://codecapsule.com/2013/11/11/robin-hood-hashing/
@@ -54,8 +56,8 @@ public:
 
     typedef T value_type;
 
-    constexpr static const std::size_t INIT_SIZE   = 4096; // number of buckets to start with
-    constexpr static const std::size_t LOAD_FACTOR =    2; // load factor as 1 - 1 / 2^n
+    constexpr static const std::size_t INIT_SIZE   = 16; // number of buckets to start with
+    constexpr static const std::size_t LOAD_FACTOR =  2; // load factor as 1 - 1 / 2^n
 
     RobinHoodHashtable() :
         _size(0)
@@ -103,24 +105,28 @@ public:
         //Check if one need a rehash
         if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
         {
-            rehash(_capacity, (_capacity <<= 1));
+            rehash(_capacity, _capacity << 1);
         }
 
         uint8_t dib = Bucket<T>::FILLED;
 
-        T tCopy = t;
+        T tCopy(t);
 
         loop:
 
-            const std::size_t hash = _hasher(tCopy);
+            Bucket<T>* head = &_buckets[(_hasher(tCopy) + dib) % _capacity];
 
             //Skip filled buckets with larger dib
-            while (dib < _buckets[(hash + dib) % _capacity]._dib)
+            while (dib < head->_dib)
             {
                 dib++;
-            }
+                head++;
 
-            Bucket<T>* head = &_buckets[(hash + dib) % _capacity];
+                if (head == _buckets + _capacity)
+                {
+                    head = _buckets;
+                }
+            }
 
             if (dib == head->_dib && _equalTo(tCopy, head->_value))
             {
@@ -146,33 +152,88 @@ public:
             }
     }
 
+    void insert(T&& t)
+    {
+        //Check if one need a rehash
+        if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
+        {
+            rehash(_capacity, _capacity << 1);
+        }
+
+        uint8_t dib = Bucket<T>::FILLED;
+
+        T tCopy = std::move(t);
+
+        loop:
+
+            Bucket<T>* head = &_buckets[(_hasher(tCopy) + dib) % _capacity];
+
+            //Skip filled buckets with larger dib
+            while (dib < head->_dib)
+            {
+                dib++;
+                head++;
+
+                if (head == _buckets + _capacity)
+                {
+                    head = _buckets;
+                }
+            }
+
+            if (dib == head->_dib && _equalTo(tCopy, head->_value))
+            {
+                _size--;
+            }
+            else if (head->isEmpty())
+            {
+                head->_value = std::move(tCopy);
+                head->_dib = dib;
+            }
+            else
+            {
+                //copy the value of the found bucket and insert our own
+                T tTmp = std::move(head->_value);
+                const uint8_t dibTmp = head->_dib + 1;
+
+                head->_value = std::move(tCopy);
+                head->_dib = dib;
+
+                tCopy = std::move(tTmp);
+                dib = dibTmp;
+                goto loop;
+            }
+    }
+
     void erase(const T& t)
     {
         uint8_t dib = Bucket<T>::FILLED;
-        const std::size_t hash = _hasher(t);
-        Bucket<T>* const base = &_buckets[0];
 
-        Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
+        Bucket<T>* prec = &_buckets[(_hasher(t) + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
         while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
         {
             dib++;
-            prec = &_buckets[(hash + dib) % _capacity];
+            prec++;
+
+            if (prec == _buckets + _capacity)
+            {
+                prec = _buckets;
+            }
         }
 
         //if the element is found
         if (dib == prec->_dib)
         {
-            Bucket<T>* succ = base + ((prec - base + 1) % _capacity);
+            Bucket<T>* succ = _buckets + ((prec - _buckets + 1) % _capacity);
 
             //Shift the right-adjacent buckets to the left
             while (succ->_dib > Bucket<T>::FILLED)
             {
                 prec->_dib = succ->_dib - 1;
-                prec->_value = succ->_value;
+                prec->_value = std::move(succ->_value);
                 prec = succ;
-                succ = &_buckets[0] + ((prec - base + 1) % _capacity);
+                succ = _buckets + ((prec - _buckets + 1) % _capacity);
             }
 
             //Empty the bucket and decrement the size
@@ -189,15 +250,19 @@ public:
     {
         uint8_t dib =  Bucket<T>::FILLED;
         const std::size_t hash = _hasher(t);
-        const Bucket<T>* base = &_buckets[0];
 
-        const Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
+        Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
         while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
         {
             dib++;
-            prec = &_buckets[(hash + dib) % _capacity];
+            prec++;
+
+            if (prec == _buckets + _capacity)
+            {
+                prec = _buckets;
+            }
         }
 
         //if the element is found
@@ -219,10 +284,10 @@ public:
     {
         if (empty())
         {
-            return I(&_buckets[0] + _capacity);
+            return I(_buckets + _capacity);
         }
 
-        Bucket<T>* base = &_buckets[0];
+        Bucket<T>* base = _buckets;
 
         return ((base->isFilled()) ?    I(base)
                                    : ++(I(base)));
@@ -234,7 +299,7 @@ public:
     template <typename I>
     I uend() const
     {
-        return I(&_buckets[0] + _capacity);
+        return I(_buckets + _capacity);
     }
 
     template <typename U, // U buckets pointer type const/non-const
@@ -308,12 +373,12 @@ private:
 
         Bucket<T>* added = _allocator.allocate(newCap + 1);
 
-        for (std::size_t i = 0; i <= _capacity; i++)
+        for (std::size_t i = 0; i <= newCap; i++)
         {
             _allocator.construct(added + i);
         }
 
-        added[_capacity]._dib = Bucket<T>::FILLED;
+        added[newCap]._dib = Bucket<T>::FILLED;
 
         std::swap(added, _buckets);
 
@@ -323,8 +388,9 @@ private:
         {
             if (added[i].isFilled())
             {
-                this->insert(added[i]._value);
+                this->insert(std::move(added[i]._value));
             }
+            _allocator.destroy(added + i);
         }
 
         _allocator.deallocate(added, oldCap);
@@ -346,7 +412,12 @@ private:
 
     void free()
     {
-        _allocator.deallocate(_buckets, _capacity);
+        for (std::size_t i = 0; i <= _capacity; i++)
+        {
+            _allocator.destroy(_buckets + i);
+        }
+
+        _allocator.deallocate(_buckets, _capacity + 1);
     }
 
     Bucket<T>*        _buckets;   // buckets...
