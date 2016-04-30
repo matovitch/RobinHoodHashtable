@@ -93,37 +93,9 @@ public:
         init(INIT_SIZE);
     }
 
-    /**
-     * Reserve more memory and rehash the table accordingly
-     */
-    void rehash()
+    void reserve(std::size_t size)
     {
-        std::size_t oldCapacity = _capacity;
-
-        _capacity <<= 1;
-
-        Bucket<T>* added = _allocator.allocate(_capacity + 1);
-
-        for (std::size_t i = 0; i <= _capacity; i++)
-        {
-            _allocator.construct(added + i);
-        }
-
-        added[_capacity]._dib = Bucket<T>::FILLED;
-
-        std::swap(added, _buckets);
-
-        _size = 1;
-
-        for (std::size_t i = 0; i < oldCapacity; i++)
-        {
-            if (added[i].isFilled())
-            {
-                this->insert(added[i]._value);
-            }
-        }
-
-        _allocator.deallocate(added, oldCapacity);
+        rehash(_capacity, (size << LOAD_FACTOR) / ((1 << LOAD_FACTOR) - 1));
     }
 
     void insert(const T& t)
@@ -131,7 +103,7 @@ public:
         //Check if one need a rehash
         if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
         {
-            rehash();
+            rehash(_capacity, (_capacity <<= 1));
         }
 
         uint8_t dib = Bucket<T>::FILLED;
@@ -296,12 +268,12 @@ public:
 
         bool operator==(const Iterator<U, V>& rhs) const
         {
-            return this->_bucketPtr == rhs->_bucketPtr;
+            return _bucketPtr == rhs->_bucketPtr;
         }
 
         bool operator!=(const Iterator<U, V>& rhs) const
         {
-            return this->_bucketPtr != rhs._bucketPtr;
+            return _bucketPtr != rhs._bucketPtr;
         }
 
         U _bucketPtr;           //Bucket pointer by the iterator
@@ -325,6 +297,38 @@ public:
     bool empty() const { return _size == 0; }
 
 private:
+
+    /**
+     * Reserve more memory and rehash the table accordingly
+     */
+    void rehash(std::size_t oldCap,
+                std::size_t newCap)
+    {
+        _capacity = newCap;
+
+        Bucket<T>* added = _allocator.allocate(newCap + 1);
+
+        for (std::size_t i = 0; i <= _capacity; i++)
+        {
+            _allocator.construct(added + i);
+        }
+
+        added[_capacity]._dib = Bucket<T>::FILLED;
+
+        std::swap(added, _buckets);
+
+        _size = 1;
+
+        for (std::size_t i = 0; i < oldCap; i++)
+        {
+            if (added[i].isFilled())
+            {
+                this->insert(added[i]._value);
+            }
+        }
+
+        _allocator.deallocate(added, oldCap);
+    }
 
     void init(std::size_t capacity)
     {
