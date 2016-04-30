@@ -265,15 +265,8 @@ public:
     template <typename I>
     I ubegin() const
     {
-        if (empty())
-        {
-            return I(_buckets + _capacity);
-        }
-
-        Bucket<T>* base = _buckets;
-
-        return ((base->isFilled()) ?    I(base)
-                                   : ++(I(base)));
+        return (_buckets->isFilled()) ?    I(_buckets)
+                                       : ++I(_buckets);
     }
 
     /**
