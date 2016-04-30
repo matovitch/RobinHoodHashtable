@@ -358,7 +358,7 @@ private:
         {
             if (added[i].isFilled())
             {
-                this->insert(std::move(added[i]._value));
+                insert(std::move(added[i]._value));
             }
             _allocator.destroy(added + i);
         }
