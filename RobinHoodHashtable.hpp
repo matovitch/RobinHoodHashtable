@@ -1,12 +1,10 @@
 #ifndef __ROBIN_HOOD_HASH_TABLE_H__
 #define __ROBIN_HOOD_HASH_TABLE_H__
 
-#include <algorithm>
 #include <functional>
+#include <algorithm>
 #include <cstddef>
 #include <memory>
-
-#include <iostream>
 
 /**
  * This is an implementation of a Robin-Hood hashing based hashtable, you can find more info there :
