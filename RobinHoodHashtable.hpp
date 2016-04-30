@@ -233,20 +233,14 @@ public:
     I ufind(const T& t) const
     {
         uint8_t dib =  Bucket<T>::FILLED;
-        const std::size_t hash = _hasher(t);
 
-        Bucket<T>* prec = &_buckets[(hash + dib) % _capacity];
+        Bucket<T>* prec = &_buckets[(_hasher(t) + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
         while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
         {
             dib++;
-            prec++;
-
-            if (prec == _buckets + _capacity)
-            {
-                prec = _buckets;
-            }
+            prec = (++prec == _buckets + _capacity) ? _buckets : prec;
         }
 
         //if the element is found
@@ -254,10 +248,9 @@ public:
         {
             return I(prec);
         }
-        else
-        {
-            return uend<I>();
-        }
+
+        //no luck :(
+        return uend<I>();
     }
 
     /**
