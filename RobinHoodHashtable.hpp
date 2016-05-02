@@ -51,9 +51,160 @@ template <typename T,                               // type of the contained val
 class RobinHoodHashtable
 {
 
+private:
+
+    void init(std::size_t capacity)
+    {
+        _capacity = capacity;
+
+        _buckets = _allocator.allocate(_capacity + 1);
+
+        for (std::size_t i = 0; i <= _capacity; i++)
+        {
+            _allocator.construct(_buckets + i);
+        }
+
+        _buckets[_capacity].markFilled();
+    }
+
+    void free()
+    {
+        for (std::size_t i = 0; i <= _capacity; i++)
+        {
+            _allocator.destroy(_buckets + i);
+        }
+
+        _allocator.deallocate(_buckets, _capacity + 1);
+    }
+
+    /**
+     * Reserve more memory and rehash the table accordingly
+     */
+    void rehash(std::size_t oldCap,
+                std::size_t newCap)
+    {
+        _capacity = newCap;
+
+        Bucket<T>* added = _allocator.allocate(newCap + 1);
+
+        for (std::size_t i = 0; i <= newCap; i++)
+        {
+            _allocator.construct(added + i);
+        }
+
+        added[newCap].markFilled();
+
+        std::swap(added, _buckets);
+
+        _size = 0;
+
+        for (std::size_t i = 0; i < oldCap; i++)
+        {
+            if (added[i].isFilled())
+            {
+                this->insert(std::move(added[i]._value));
+            }
+            _allocator.destroy(added + i);
+        }
+
+        _allocator.deallocate(added, oldCap);
+    }
+
+    /**
+     * Template function to avoid find/cfind redundancy
+     */
+    template <typename I>
+    I ufind(const T& t) const
+    {
+        uint8_t dib =  Bucket<T>::FILLED;
+
+        Bucket<T>* prec = &_buckets[(_hasher(t) + dib) % _capacity];
+
+        //Skip buckets with lower dib or different value
+        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
+        {
+            dib++;
+            prec = (++prec == _buckets + _capacity) ? _buckets : prec;
+        }
+
+        //if the element is found
+        if (dib == prec->_dib && _equalTo(t, prec->_value))
+        {
+            return I(prec);
+        }
+
+        //no luck :(
+        return uend<I>();
+    }
+
+    /**
+     * Same thing, utility for begin/cbegin
+     */
+    template <typename I>
+    I ubegin() const
+    {
+        return (_buckets->isFilled()) ?    I(_buckets)
+                                       : ++I(_buckets);
+    }
+
+    /**
+     * Same thing, utility for end/cend
+     */
+    template <typename I>
+    I uend() const
+    {
+        return I(_buckets + _capacity);
+    }
+
+    template <typename U, // U buckets pointer type const/non-const
+              typename V> // V value type const/non-const
+    struct Iterator
+    {
+        Iterator(const U bucketPtr) : _bucketPtr(bucketPtr) {}
+
+        Iterator(const Iterator<U, V>& it) : _bucketPtr(it._bucketPtr) {}
+
+        V& operator* () const { return _bucketPtr->_value; }
+
+        V* operator-> () const { return &(_bucketPtr->_value); }
+
+        Iterator<U, V>& operator++()
+        {
+            do
+            {
+                _bucketPtr++;
+            } while (!_bucketPtr->isFilled());
+            //we skipped the empty buckets ! Hoora !
+            return *this;
+        }
+
+        Iterator<U, V> operator++(int)
+        {
+            iterator tmp(*this);
+            operator++();
+            return tmp;
+        }
+
+        bool operator==(const Iterator<U, V>& rhs) const
+        {
+            return _bucketPtr == rhs->_bucketPtr;
+        }
+
+        bool operator!=(const Iterator<U, V>& rhs) const
+        {
+            return _bucketPtr != rhs._bucketPtr;
+        }
+
+        U _bucketPtr;           //Bucket pointer by the iterator
+    };
+
 public:
 
     typedef T value_type;
+
+    //The classic iterator typedefs
+    typedef Iterator<      Bucket<T>*,       T>       iterator;
+    typedef Iterator<const Bucket<T>*, const T> const_iterator;
 
     constexpr static const std::size_t INIT_SIZE   = 16; // number of buckets to start with
     constexpr static const std::size_t LOAD_FACTOR =  2; // load factor as 1 - 1 / 2^n
@@ -226,98 +377,6 @@ public:
         }
     }
 
-    /**
-     * Template function to avoid find/cfind redundancy
-     */
-    template <typename I>
-    I ufind(const T& t) const
-    {
-        uint8_t dib =  Bucket<T>::FILLED;
-
-        Bucket<T>* prec = &_buckets[(_hasher(t) + dib) % _capacity];
-
-        //Skip buckets with lower dib or different value
-        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
-        {
-            dib++;
-            prec = (++prec == _buckets + _capacity) ? _buckets : prec;
-        }
-
-        //if the element is found
-        if (dib == prec->_dib && _equalTo(t, prec->_value))
-        {
-            return I(prec);
-        }
-
-        //no luck :(
-        return uend<I>();
-    }
-
-    /**
-     * Same thing, utility for begin/cbegin
-     */
-    template <typename I>
-    I ubegin() const
-    {
-        return (_buckets->isFilled()) ?    I(_buckets)
-                                       : ++I(_buckets);
-    }
-
-    /**
-     * Same thing, utility for end/cend
-     */
-    template <typename I>
-    I uend() const
-    {
-        return I(_buckets + _capacity);
-    }
-
-    template <typename U, // U buckets pointer type const/non-const
-              typename V> // V value type const/non-const
-    struct Iterator
-    {
-        Iterator(const U bucketPtr) : _bucketPtr(bucketPtr) {}
-
-        Iterator(const Iterator<U, V>& it) : _bucketPtr(it._bucketPtr) {}
-
-        V& operator* () const { return _bucketPtr->_value; }
-
-        V* operator-> () const { return &(_bucketPtr->_value); }
-
-        Iterator<U, V>& operator++()
-        {
-            do
-            {
-                _bucketPtr++;
-            } while (!_bucketPtr->isFilled());
-            //we skipped the empty buckets ! Hoora !
-            return *this;
-        }
-
-        Iterator<U, V> operator++(int)
-        {
-            iterator tmp(*this);
-            operator++();
-            return tmp;
-        }
-
-        bool operator==(const Iterator<U, V>& rhs) const
-        {
-            return _bucketPtr == rhs->_bucketPtr;
-        }
-
-        bool operator!=(const Iterator<U, V>& rhs) const
-        {
-            return _bucketPtr != rhs._bucketPtr;
-        }
-
-        U _bucketPtr;           //Bucket pointer by the iterator
-    };
-
-    //The classic iterator typedefs
-    typedef Iterator<      Bucket<T>*,       T>       iterator;
-    typedef Iterator<const Bucket<T>*, const T> const_iterator;
-
           iterator  find(const T& t)       { return ufind<      iterator>(t); }
     const_iterator cfind(const T& t) const { return ufind<const_iterator>(t); }
 
@@ -332,63 +391,6 @@ public:
     bool empty() const { return _size == 0; }
 
 private:
-
-    /**
-     * Reserve more memory and rehash the table accordingly
-     */
-    void rehash(std::size_t oldCap,
-                std::size_t newCap)
-    {
-        _capacity = newCap;
-
-        Bucket<T>* added = _allocator.allocate(newCap + 1);
-
-        for (std::size_t i = 0; i <= newCap; i++)
-        {
-            _allocator.construct(added + i);
-        }
-
-        added[newCap].markFilled();
-
-        std::swap(added, _buckets);
-
-        _size = 0;
-
-        for (std::size_t i = 0; i < oldCap; i++)
-        {
-            if (added[i].isFilled())
-            {
-                insert(std::move(added[i]._value));
-            }
-            _allocator.destroy(added + i);
-        }
-
-        _allocator.deallocate(added, oldCap);
-    }
-
-    void init(std::size_t capacity)
-    {
-        _capacity = capacity;
-
-        _buckets = _allocator.allocate(_capacity + 1);
-
-        for (std::size_t i = 0; i <= _capacity; i++)
-        {
-            _allocator.construct(_buckets + i);
-        }
-
-        _buckets[_capacity].markFilled();
-    }
-
-    void free()
-    {
-        for (std::size_t i = 0; i <= _capacity; i++)
-        {
-            _allocator.destroy(_buckets + i);
-        }
-
-        _allocator.deallocate(_buckets, _capacity + 1);
-    }
 
     Bucket<T>*        _buckets;   // buckets...
     std::size_t       _capacity;  // number of buckets
