@@ -187,7 +187,7 @@ private:
 
         bool operator==(const Iterator<U, V>& rhs) const
         {
-            return _bucketPtr == rhs->_bucketPtr;
+            return _bucketPtr == rhs._bucketPtr;
         }
 
         bool operator!=(const Iterator<U, V>& rhs) const
