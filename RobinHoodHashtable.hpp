@@ -1,8 +1,8 @@
 #ifndef __ROBIN_HOOD_HASH_TABLE_H__
 #define __ROBIN_HOOD_HASH_TABLE_H__
 
-#include <functional>
 #include <algorithm>
+#include <utility>
 #include <cstddef>
 #include <memory>
 
