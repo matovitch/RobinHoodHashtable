@@ -206,8 +206,9 @@ public:
     typedef Iterator<      Bucket<T>*,       T>       iterator;
     typedef Iterator<const Bucket<T>*, const T> const_iterator;
 
-    constexpr static const std::size_t INIT_SIZE   = 16; // number of buckets to start with
-    constexpr static const std::size_t LOAD_FACTOR =  2; // load factor as 1 - 1 / 2^n
+    constexpr static const std::size_t CLEAR_SIZE  = 1 << 16; // above this size clear() free the buckets
+    constexpr static const std::size_t INIT_SIZE   =      16; // number of buckets to start with
+    constexpr static const std::size_t LOAD_FACTOR =       2; // load factor as 1 - 1 / 2^n
 
     RobinHoodHashtable() :
         _size(0)
@@ -241,8 +242,20 @@ public:
 
     void clear()
     {
-        free();
-        init(INIT_SIZE);
+        if (_capacity > CLEAR_SIZE)
+        {
+            free();
+            init(INIT_SIZE);
+        }
+        else
+        {
+            for (std::size_t i = 0; i < _capacity; i++)
+            {
+                _buckets[i].markEmpty();
+            }
+        }
+
+        _size = 0;
     }
 
     void reserve(std::size_t size)
