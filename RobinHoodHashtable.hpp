@@ -13,7 +13,22 @@
 
 
 /**
- *Bucket: one entry of the hashtable
+* Simple helper to work with non-default-constructible types
+**/
+template <typename T>
+union Uninitialized
+{
+    Uninitialized() : _initialized() {}
+    
+    ~Uninitialized() {}
+    
+    uint8_t _initialized;
+    T _t;
+};
+
+
+/**
+ * Bucket: one entry of the hashtable
  */
 template <typename T>
 struct Bucket
@@ -36,8 +51,8 @@ struct Bucket
     bool isEmpty () const { return _dib == EMPTY ; }
     bool isFilled() const { return _dib != EMPTY; }
 
-    uint8_t _dib;   // Distance to Initial Bucket
-    T       _value; // the actual value
+    uint8_t          _dib;   // Distance to Initial Bucket
+    Uninitialized<T> _value; // the actual value
 };
 
 
@@ -102,7 +117,7 @@ private:
         {
             if (added[i].isFilled())
             {
-                this->insert(std::move(added[i]._value));
+                this->insert(std::move(added[i]._value._t));
             }
             _allocator.destroy(added + i);
         }
@@ -121,14 +136,14 @@ private:
         Bucket<T>* prec = &_buckets[(_hasher(t) + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
-        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
+        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value._t)))
         {
             dib++;
             prec = (++prec == _buckets + _capacity) ? _buckets : prec;
         }
 
         //if the element is found
-        if (dib == prec->_dib && _equalTo(t, prec->_value))
+        if (dib == prec->_dib && _equalTo(t, prec->_value._t))
         {
             return I(prec);
         }
@@ -164,9 +179,9 @@ private:
 
         Iterator(const Iterator<U, V>& it) : _bucketPtr(it._bucketPtr) {}
 
-        V& operator* () const { return _bucketPtr->_value; }
+        V& operator* () const { return _bucketPtr->_value._t; }
 
-        V* operator-> () const { return &(_bucketPtr->_value); }
+        V* operator-> () const { return &(_bucketPtr->_value._t); }
 
         Iterator<U, V>& operator++()
         {
@@ -271,11 +286,11 @@ public:
                 head = (++head == _buckets + _capacity) ? _buckets : head;
             }
 
-            if (dib != head->_dib || !_equalTo(tCopy, head->_value))
+            if (dib != head->_dib || !_equalTo(tCopy, head->_value._t))
             {
                 if (head->isEmpty())
                 {
-                    head->_value = tCopy;
+                    head->_value._t = tCopy;
                     head->_dib = dib;
 
                     //Check if one need a rehash
@@ -287,10 +302,10 @@ public:
                 else
                 {
                     //copy the value of the found bucket and insert our own
-                    const T tTmp = head->_value;
+                    const T tTmp = head->_value._t;
                     const uint8_t dibTmp = head->_dib + 1;
 
-                    head->_value = tCopy;
+                    head->_value._t = tCopy;
                     head->_dib = dib;
 
                     tCopy = tTmp;
@@ -318,11 +333,11 @@ public:
                 head = (++head == _buckets + _capacity) ? _buckets : head;
             }
 
-            if (dib != head->_dib || !_equalTo(tCopy, head->_value))
+            if (dib != head->_dib || !_equalTo(tCopy, head->_value._t))
             {
                 if (head->isEmpty())
                 {
-                    head->_value = std::move(tCopy);
+                    head->_value._t = std::move(tCopy);
                     head->_dib = dib;
 
                     //Check if one need a rehash
@@ -334,10 +349,10 @@ public:
                 else
                 {
                     //copy the value of the found bucket and insert our own
-                    T tTmp = std::move(head->_value);
+                    T tTmp = std::move(head->_value._t);
                     const uint8_t dibTmp = head->_dib + 1;
 
-                    head->_value = std::move(tCopy);
+                    head->_value._t = std::move(tCopy);
                     head->_dib = dib;
 
                     tCopy = std::move(tTmp);
@@ -355,7 +370,7 @@ public:
         Bucket<T>* prec = &_buckets[(_hasher(t) + dib) % _capacity];
 
         //Skip buckets with lower dib or different value
-        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value)))
+        while (dib < prec->_dib || (dib == prec->_dib && !_equalTo(t, prec->_value._t)))
         {
             dib++;
             prec = (++prec == _buckets + _capacity) ? _buckets : prec;
@@ -370,7 +385,7 @@ public:
             while (succ->_dib > Bucket<T>::FILLED)
             {
                 prec->_dib = succ->_dib - 1;
-                prec->_value = std::move(succ->_value);
+                prec->_value._t = std::move(succ->_value._t);
                 prec = succ;
                 succ = (++succ == _buckets + _capacity) ? _buckets : succ;
             }
