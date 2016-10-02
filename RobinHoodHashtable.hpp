@@ -1,6 +1,7 @@
 #ifndef __ROBIN_HOOD_HASH_TABLE_H__
 #define __ROBIN_HOOD_HASH_TABLE_H__
 
+#include <type_traits>
 #include <algorithm>
 #include <utility>
 #include <cstddef>
@@ -10,7 +11,6 @@
  * This is an implementation of a Robin-Hood hashing based hashtable, you can find more info there :
  * http://codecapsule.com/2013/11/11/robin-hood-hashing/
  **/
-
 
 /**
 * Simple helper to work with non-default-constructible types
@@ -25,7 +25,6 @@ union Uninitialized
     uint8_t _initialized;
     T _t;
 };
-
 
 /**
  * Bucket: one entry of the hashtable
@@ -84,11 +83,17 @@ private:
 
     void free()
     {
-        for (std::size_t i = 0; i <= _capacity; i++)
+        for (std::size_t i = 0; i < _capacity; i++)
         {
+            if (_buckets[i].isFilled())
+            {
+                _tAllocator.destroy(&(_buckets[i]._value._t));
+            }
+
             _allocator.destroy(_buckets + i);
         }
 
+        _allocator.destroy(_buckets + _capacity);
         _allocator.deallocate(_buckets, _capacity + 1);
     }
 
@@ -269,54 +274,8 @@ public:
         rehash(_capacity, (size << LOAD_FACTOR) / ((1 << LOAD_FACTOR) - 1));
     }
 
-    void insert(const T& t)
-    {
-        uint8_t dib = Bucket<T>::FILLED;
-
-        T tCopy(t);
-
-        loop:
-        {
-            Bucket<T>* head = &_buckets[(_hasher(tCopy) + dib) % _capacity];
-
-            //Skip filled buckets with larger dib
-            while (dib < head->_dib)
-            {
-                dib++;
-                head = (++head == _buckets + _capacity) ? _buckets : head;
-            }
-
-            if (dib != head->_dib || !_equalTo(tCopy, head->_value._t))
-            {
-                if (head->isEmpty())
-                {
-                    head->_value._t = tCopy;
-                    head->_dib = dib;
-
-                    //Check if one need a rehash
-                    if (((++_size) << LOAD_FACTOR) >= (_capacity << LOAD_FACTOR) - _capacity)
-                    {
-                        rehash(_capacity, _capacity << 1);
-                    }
-                }
-                else
-                {
-                    //copy the value of the found bucket and insert our own
-                    const T tTmp = head->_value._t;
-                    const uint8_t dibTmp = head->_dib + 1;
-
-                    head->_value._t = tCopy;
-                    head->_dib = dib;
-
-                    tCopy = tTmp;
-                    dib = dibTmp;
-                    goto loop;
-                }
-            }
-        }
-    }
-
-    void insert(T&& t)
+    template <typename U>
+    void insert(U&& t)
     {
         uint8_t dib = Bucket<T>::FILLED;
 
@@ -337,7 +296,7 @@ public:
             {
                 if (head->isEmpty())
                 {
-                    head->_value._t = std::move(tCopy);
+                    _tAllocator.construct(&(head->_value._t), std::move(tCopy));
                     head->_dib = dib;
 
                     //Check if one need a rehash
@@ -411,12 +370,13 @@ public:
 
 private:
 
-    Bucket<T>*        _buckets;   // buckets...
-    std::size_t       _capacity;  // number of buckets
-    std::size_t       _size;      // number of elements
-    H                 _hasher;    // hasher...
-    E                 _equalTo;   // equality...
-    A                 _allocator; // allocator...
+    Bucket<T>*        _buckets;     // buckets...
+    std::size_t       _capacity;    // number of buckets
+    std::size_t       _size;        // number of elements
+    H                 _hasher;      // hasher...
+    E                 _equalTo;     // equality...
+    A                 _allocator;   // allocator...
+    std::allocator<T> _tAllocator;  // allocator of Ts...
 };
 
 
